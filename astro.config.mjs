@@ -54,6 +54,6 @@ export default defineConfig({
 			},
 		},
 	},
-	site: 'https://livan.alexsab.ru',
+	site: 'https://livan-samara.ru',
 	base: "/"
 });
