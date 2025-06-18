@@ -28,17 +28,18 @@ export const LINKS_MENU = [
 	},
 	// {url: 'trade-in/', name: 'Оценка автомобиля'},
 	{url: 'special-offers/', name: 'Спецпредложения'},
-	{url: 'news/', name: 'Новости'},
+	// {url: 'news/', name: 'Новости'},
 	{url: 'test-drive/', name: 'Запись на тест-драйв'},
 	{url: 'service-request/', name: 'Запись на сервис'},
 	{url: '#services', name: 'Услуги'},
+	{url: 'brand-history/', name: 'История бренда'},
 	{url: 'contacts/', name: 'Контакты'},
 ];
 
 // Коллекции
 export const COLLECTIONS = [
 	{name: 'special-offers', title: 'Спецпредложения'},
-	{name: 'news', title: 'Новости'},
+	// {name: 'news', title: 'Новости'},
 ];
 
 // Текст согласия в формах
