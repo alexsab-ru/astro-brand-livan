@@ -12,6 +12,9 @@ const { brand, legal_city_where } = settings;
 			<PageH1 h1={`Записаться на сервис ${brand}`} classes="text-3xl sm:text-4xl font-bold text-center" />
 			<p class="text-center mt-1 text-gray-500">Профессиональное обслуживание с сохранением гарантии</p>
 		</div>
-		<Form dataFormName="Запись на сервис" showModelSelect={true} />
+		<div class="flex flex-col-reverse lg:grid grid-cols-2 items-center gap-10">
+			<Form dataFormName="Запись на сервис" showModelSelect={true} />
+			<img src="https://cdn.alexsab.ru/b/livan/img/banners/moyka-dnishcha.webp" alt="Мойка днища на подъемнике">
+		</div>
 	</div>
 </Layout>
