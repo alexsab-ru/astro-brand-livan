@@ -1,8 +1,14 @@
 [
   {
     "brand": "Livan",
+    "model": "S6PRO",
+    "price": 1776000,
+    "benefit": 288000
+  },
+  {
+    "brand": "Livan",
     "model": "X3PRO",
-    "price": 1296100,
-    "benefit": 309900
+    "price": 1580000,
+    "benefit": 299900
   }
 ]
