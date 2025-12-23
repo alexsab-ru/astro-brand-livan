@@ -2,6 +2,7 @@
 import csv
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
+import hashlib
 import argparse
 try:
     import requests
@@ -34,6 +35,11 @@ class CarFeedProcessorCSV:
             raise ValueError("No data to read. Provide a URL or file path.")
     
     @staticmethod
+    def vin_to_code_md5(vin: str) -> str:
+        vin = vin.strip().upper()
+        return hashlib.md5(vin.encode("utf-8")).hexdigest()
+
+    @staticmethod
     def _get_value(row, keys):
         if not isinstance(keys, (list, tuple)):
             keys = [keys]
@@ -46,10 +52,12 @@ class CarFeedProcessorCSV:
     @staticmethod
     def _is_valid_row(row):
         vin_value = CarFeedProcessorCSV._get_value(row, ["VIN", "Vin", "vin"])
-        availability_value = CarFeedProcessorCSV._get_value(row, ["availability", "Наличие", "Availability"])
+        availability_value = CarFeedProcessorCSV._get_value(row, ["availability", "Наличие", "Availability", "Статус"])
         if not vin_value or vin_value in {"Обязательный", "Подробнее о параметре"}:
+            print(f"Vin value is invalid: {vin_value}")
             return False
         if not availability_value or availability_value in {"пример", "Обязательный", "Подробнее о параметре"}:
+            print(f"Availability value is invalid: {availability_value}")
             return False
         return True
 
@@ -72,6 +80,28 @@ class CarFeedProcessorCSV:
                 if value:
                     ET.SubElement(car, tag).text = value
 
+            # NOTE: parse_price ensures we always save numeric price values.
+            # It strips spaces/nbsp, normalizes separators, drops fractional part,
+            # and returns a plain integer string. Keeps feed clean even if CSV has "2 999 000,00".
+            def parse_price(value, _):
+                if value is None:
+                    return None
+                # clean common formatting artifacts in price strings
+                cleaned = str(value).replace('\xa0', ' ').strip()
+                cleaned = cleaned.replace(' ', '')
+                cleaned = cleaned.replace(',', '.')
+                # handle thousand separators like "2.999.000,00"
+                if cleaned.count('.') > 1:
+                    parts = cleaned.split('.')
+                    cleaned = '.'.join([''.join(parts[:-1]), parts[-1]])
+                try:
+                    price_number = float(cleaned)
+                    return str(int(price_number))
+                except (ValueError, TypeError):
+                    # fallback: keep only digits as a last resort
+                    digits_only = ''.join(ch for ch in cleaned if ch.isdigit())
+                    return digits_only or None
+
             def folder_transform(value, current_row):
                 model = value or self._get_value(current_row, ["Model", "Модель"])
                 generation = self._get_value(current_row, ["GenerationId"])
@@ -80,26 +110,27 @@ class CarFeedProcessorCSV:
                     return f"{model}, {generation_short}"
                 return model or generation_short
 
-            safe_set('mark_id', ['Марка', 'Make'])
-            safe_set('folder_id', ['Модель', 'Model'], transform=folder_transform)
+            safe_set('mark_id', ['Марка', 'Make', 'Бренд'])
+            safe_set('folder_id', ['Модель', 'Model', 'Модель автомобиля'], transform=folder_transform)
             safe_set('modification_id', ['Модификация', 'ModificationId'])
             safe_set('body_type', ['Тип кузова', 'BodyType'])
             safe_set('complectation_name', ['Комплектация', 'ComplectationId'])
             safe_set('wheel', ['Руль', 'WheelType'], 'Левый')
             safe_set('color', ['Цвет', 'Цвет экстерьера', 'Color'])
             safe_set('metallic', ['Металлик'], 'нет')
-            safe_set('availability', ['Наличие', 'Availability'], 'в наличии')
-            safe_set('driveType', ['Привод', 'DriveType'], 'Передний')
+            safe_set('availability', ['Наличие', 'Availability', 'Статус'], 'в наличии')
+            safe_set('driveType', ['Привод', 'DriveType', 'Тип привода'], 'Передний')
             safe_set('engineType', ['Топливо', 'FuelType'], 'Бензин')
-            safe_set('gearboxType', ['Коробка', 'Transmission'])
+            safe_set('gearboxType', ['Коробка', 'Transmission', 'Тип КПП'])
             safe_set('run', ['Пробег'])
-            safe_set('engine_volume', ['Объем', 'EngineSize'])
+            safe_set('engine_volume', ['Объем', 'EngineSize', 'Тип двигателя'])
             safe_set('custom', ['Таможня', 'RegInRussia'])
             safe_set('owners_number', ['Владельцы'])
             safe_set('year', ['Год', 'Год выпуска', 'Year'])
-            safe_set('price', ['РРЦ', 'Price'])
-            safe_set('priceWithDiscount', ['Конечная цена'])
-            safe_set('sale_price', ['Конечная цена'])
+            # prices: enforce numeric output via parse_price to avoid string garbage
+            safe_set('price', ['РРЦ', 'Price', 'Цена розничная'], transform=parse_price)
+            safe_set('priceWithDiscount', ['Конечная цена'], transform=parse_price)
+            safe_set('sale_price', ['Конечная цена'], transform=parse_price)
             safe_set('credit_discount', ['Скидка по кредиту', 'CreditDiscount'], '0')
             safe_set('insurance_discount', ['Скидка по страховке'], '0')
             safe_set('tradein_discount', ['Скидка по trade-in', 'TradeinDiscount'], '0')
@@ -144,7 +175,7 @@ class CarFeedProcessorCSV:
             safe_set('Address', ['Address', 'Адрес'])
             safe_set('Latitude', ['Latitude', 'Широта'])
             safe_set('Longitude', ['Longitude', 'Долгота'])
-            safe_set('Id', ['Id', 'ID', 'id', 'ExternalId'], default=self._get_value(row, ["VIN", "Vin", "vin"]))
+            safe_set('Id', ['Id', 'ID', 'id', 'ExternalId'], default=self.vin_to_code_md5(self._get_value(row, ["VIN", "Vin", "vin"])))
             safe_set('DateBegin', ['DateBegin'])
             safe_set('DateEnd', ['DateEnd'])
             safe_set('ListingFee', ['ListingFee'])
@@ -155,10 +186,7 @@ class CarFeedProcessorCSV:
             safe_set('ContactMethod', ['ContactMethod'])
             safe_set('Category', ['Category', 'Категория'], 'Автомобили')
             safe_set('Description', ['Описание', 'Description'])
-
-            price_value = self._get_value(row, ['Конечная цена', 'Price', 'РРЦ'])
-            if price_value:
-                ET.SubElement(ad, 'Price').text = price_value
+            safe_set('Price', ['Price', 'РРЦ', 'Цена розничная'])
 
             images_element = ET.SubElement(ad, 'Images')
             images_str = self._get_value(row, ['Картинки', 'ImageUrls']) or ''
@@ -170,32 +198,32 @@ class CarFeedProcessorCSV:
                         ET.SubElement(images_element, 'Image', {'url': cleaned_url})
 
             safe_set('VideoURL', ['VideoURL'])
-            safe_set('Generation', ['Generation'])
-            safe_set('Modification', ['Modification'])
+            safe_set('Generation', ['Поколение', 'Generation'])
+            safe_set('Modification', ['Модификация', 'Modification'])
             safe_set('Complectation', ['Complectation', 'Комплектация'])
             safe_set('InternetCalls', ['InternetCalls'])
             safe_set('CallsDevices', ['CallsDevices'])
-            safe_set('CarType', ['CarType'], 'Новые')
+            safe_set('CarType', ['CarType', 'Тип автомобиля'], 'Новые')
             safe_set('TradeinDiscount', ['Скидка по trade-in', 'TradeinDiscount'])
             safe_set('CreditDiscount', ['Скидка по кредиту', 'CreditDiscount'])
             safe_set('InsuranceDiscount', ['Скидка по страховке'])
-            safe_set('MaxDiscount', ['Скидка', 'MaxDiscount'])
+            safe_set('MaxDiscount', ['Скидка', 'MaxDiscount', 'Максимальная скидка'])
             safe_set('Availability', ['Наличие', 'Availability'], 'в наличии')
             safe_set('Color', ['Цвет', 'Цвет экстерьера', 'Color'])
             safe_set('VideoFileURL', ['VideoFileURL'])
             safe_set('Make', ['Марка', 'Make'])
-            safe_set('Model', ['Модель', 'Model'])
-            safe_set('GenerationId', ['GenerationId'])
-            safe_set('ModificationId', ['Модификация', 'ModificationId'])
-            safe_set('ComplectationId', ['Комплектация', 'ComplectationId'])
+            safe_set('Model', ['Модель', 'Model', 'Модель автомобиля'])
+            safe_set('GenerationId', ['GenerationId', 'Поколение ID'])
+            safe_set('ModificationId', ['Модификация ID', 'ModificationId'])
+            safe_set('ComplectationId', ['Комплектация ID', 'ComplectationId'])
             safe_set('FuelType', ['Топливо', 'FuelType'])
             safe_set('Transmission', ['Коробка', 'Transmission'])
-            safe_set('EngineSize', ['Объем', 'EngineSize'])
+            safe_set('EngineSize', ['Объем', 'EngineSize', 'Объем двигателя','Объём', 'Объём двигателя'])
             safe_set('Year', ['Год', 'Год выпуска', 'Year'])
-            safe_set('Doors', ['Doors'])
+            safe_set('Doors', ['Doors', 'Количество дверей'])
             safe_set('BodyType', ['Тип кузова', 'BodyType'])
             safe_set('DriveType', ['Привод', 'DriveType'], 'Передний')
-            safe_set('Power', ['Power', 'Мощность'])
+            safe_set('Power', ['Power', 'Мощность', 'Мощность двигателя'])
             safe_set('WheelType', ['Руль', 'WheelType'], 'Левый')
             safe_set('PowerSteering', ['PowerSteering'])
             safe_set('ClimateControl', ['ClimateControl'])
@@ -216,7 +244,7 @@ class CarFeedProcessorCSV:
             safe_set('AudioSystemOptions', ['AudioSystemOptions'])
             safe_set('Lights', ['Lights'])
             safe_set('LightsOptions', ['LightsOptions'])
-            safe_set('Wheels', ['Wheels'])
+            safe_set('Wheels', ['Wheels', 'Колеса'])
             safe_set('WheelsOptions', ['WheelsOptions'])
             safe_set('Maintenance', ['Maintenance'])
             safe_set('AuctionPriceLastDate', ['AuctionPriceLastDate'])
